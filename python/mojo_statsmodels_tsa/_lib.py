@@ -19,6 +19,8 @@ _SIGNATURES = {
     "mts_q_stat": [I, I, I, I],
     "mts_convolution": [I, I, I, I, I, I, F, I],
     "mts_seasonal_mean": [I, I, I, I, F, I],
+    "mts_seasonal_mean_detrended": [I, I, I, I, I, I, F, I, I],
+    "mts_seasonal_resid": [I, I, I, I, I, I, I, I, I],
     "mts_kpss_moments": [I, I, I, I],
     "mts_ols_moments": [I, I, I, I, I, I],
 }

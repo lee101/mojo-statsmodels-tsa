@@ -213,6 +213,88 @@ def mts_seasonal_mean(
                 dst[phase * cols + c] = total / Float64(count)
 
 
+@export("mts_seasonal_mean_detrended")
+def mts_seasonal_mean_detrended(
+    x_addr: Int,
+    trend_addr: Int,
+    n: Int,
+    cols: Int,
+    period: Int,
+    multiplicative: Int,
+    nan: Float64,
+    dst_addr: Int,
+    scratch_addr: Int,
+) abi("C"):
+    var x = p(x_addr)
+    var trend = p(trend_addr)
+    var dst = p(dst_addr)
+    var scratch = p(scratch_addr)
+    var cycle = period * cols
+    fill(dst, 0, cycle, 0.0)
+    fill(scratch, 0, cycle, 0.0)
+    var total_values = n * cols
+    var base = 0
+    while base < total_values:
+        var block = min(cycle, total_values - base)
+        for q in range(block):
+            var value = x[base + q] - trend[base + q]
+            if multiplicative != 0:
+                value = x[base + q] / trend[base + q]
+            if value == value:
+                dst[q] += value
+                scratch[q] += 1.0
+        base += cycle
+    for q in range(cycle):
+        if scratch[q] == 0.0:
+            dst[q] = nan
+        else:
+            dst[q] /= scratch[q]
+
+
+@export("mts_seasonal_resid")
+def mts_seasonal_resid(
+    x_addr: Int,
+    trend_addr: Int,
+    period_mean_addr: Int,
+    n: Int,
+    cols: Int,
+    period: Int,
+    multiplicative: Int,
+    seasonal_addr: Int,
+    resid_addr: Int,
+) abi("C"):
+    var x = p(x_addr)
+    var trend = p(trend_addr)
+    var period_mean = p(period_mean_addr)
+    var seasonal = p(seasonal_addr)
+    var resid = p(resid_addr)
+    var cycle = period * cols
+    var total_values = n * cols
+    var base = 0
+    while base < total_values:
+        var block = min(cycle, total_values - base)
+        var q = 0
+        while q + W <= block:
+            var phase = period_mean.load[width=W](q)
+            var observed = x.load[width=W](base + q)
+            var trend_value = trend.load[width=W](base + q)
+            seasonal.store(base + q, phase)
+            if multiplicative != 0:
+                resid.store(base + q, observed / trend_value / phase)
+            else:
+                resid.store(base + q, observed - trend_value - phase)
+            q += W
+        while q < block:
+            var phase = period_mean[q]
+            seasonal[base + q] = phase
+            if multiplicative != 0:
+                resid[base + q] = x[base + q] / trend[base + q] / phase
+            else:
+                resid[base + q] = x[base + q] - trend[base + q] - phase
+            q += 1
+        base += cycle
+
+
 @export("mts_kpss_moments")
 def mts_kpss_moments(
     residual_addr: Int,

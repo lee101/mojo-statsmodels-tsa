@@ -160,26 +160,35 @@ def seasonal_decompose(
         extrapolate_trend = period - 1
     if int(extrapolate_trend) > 0:
         trend = _extrapolate_trend(trend, int(extrapolate_trend) + 1)
-    detrended = values / trend if multiplicative else values - trend
     period_averages = np.empty((period, columns), dtype=np.float64)
-    lib().mts_seasonal_mean(
-        addr(detrended),
+    seasonal = np.empty_like(values)
+    lib().mts_seasonal_mean_detrended(
+        addr(values),
+        addr(trend),
         nobs,
         columns,
         period,
+        int(multiplicative),
         float("nan"),
         addr(period_averages, writable=True),
+        addr(seasonal, writable=True),
     )
     if multiplicative:
         period_averages /= period_averages.mean(axis=0)
     else:
         period_averages -= period_averages.mean(axis=0)
-    seasonal = np.resize(period_averages, values.shape)
-    if multiplicative:
-        detrended /= seasonal
-    else:
-        detrended -= seasonal
-    resid = detrended
+    resid = np.empty_like(values)
+    lib().mts_seasonal_resid(
+        addr(values),
+        addr(trend),
+        addr(period_averages),
+        nobs,
+        columns,
+        period,
+        int(multiplicative),
+        addr(seasonal, writable=True),
+        addr(resid, writable=True),
+    )
     return DecomposeResult(
         observed=_wrap_like(original, values, None),
         seasonal=_wrap_like(original, seasonal, "seasonal"),

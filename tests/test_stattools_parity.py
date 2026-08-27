@@ -148,6 +148,24 @@ def test_adfuller_store_shape(stationary):
     assert len(stored.autolag_results) == 5
 
 
+def test_adfuller_fixed_lag_fast_path_matches_stored_result(stationary):
+    fast = mts.adfuller(
+        stationary[:-3], maxlag=7, regression="ctt", autolag=None
+    )
+    statistic, pvalue, critical, stored = mts.adfuller(
+        stationary[:-3],
+        maxlag=7,
+        regression="ctt",
+        autolag=None,
+        store=True,
+    )
+    assert fast[0] == pytest.approx(statistic, rel=2e-9, abs=2e-9)
+    assert fast[1] == pytest.approx(pvalue, rel=2e-9, abs=1e-14)
+    assert fast[2:4] == (stored.usedlag, stored.nobs)
+    assert fast[4] == pytest.approx(critical, rel=1e-14, abs=1e-14)
+    assert stored.resols.resid.shape == (stored.nobs,)
+
+
 @pytest.mark.parametrize("regression", ["c", "ct"])
 @pytest.mark.parametrize("nlags", ["auto", "legacy", 7])
 def test_kpss_parity(stationary, regression, nlags):

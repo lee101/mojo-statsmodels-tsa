@@ -79,12 +79,12 @@ float64 arrays. The comparison is against statsmodels 0.14.6.
 
 | case | Mojo port | statsmodels | result |
 | --- | ---: | ---: | ---: |
-| `acovf`, 64 lags (2M) | 82.8 ms | 1042.9 ms | 12.60x faster |
-| `acf`, 40 lags (2M) | 45.4 ms | 810.2 ms | 17.83x faster |
-| `ccf`, 40 lags (2M) | 122.5 ms | 549.5 ms | 4.48x faster |
-| `seasonal_decompose`, period 24 (2M) | 48.1 ms | 115.6 ms | 2.40x faster |
-| KPSS, 32 lags (2M) | 73.8 ms | 537.2 ms | 7.27x faster |
-| ADF, fixed 12 lags (500k) | 573.2 ms | 832.2 ms | 1.45x faster |
+| `acovf`, 64 lags (2M) | 65.9 ms | 292.3 ms | 4.44x faster |
+| `acf`, 40 lags (2M) | 46.3 ms | 745.0 ms | 16.09x faster |
+| `ccf`, 40 lags (2M) | 72.5 ms | 566.8 ms | 7.82x faster |
+| `seasonal_decompose`, period 24 (2M) | 25.1 ms | 94.7 ms | 3.77x faster |
+| KPSS, 32 lags (2M) | 44.9 ms | 265.0 ms | 5.90x faster |
+| ADF, fixed 12 lags (500k) | 175.7 ms | 832.1 ms | 4.74x faster |
 
 These results favor the port's intended workload: long series with a bounded
 number of requested lags. `acovf(x)` still uses an FFT for the full
@@ -92,8 +92,10 @@ autocovariance sequence, since a direct quadratic calculation is not useful
 there. Run `pixi run bench` to measure the current machine; benchmark output is
 not hard-coded by the script.
 
-There is intentionally no GPU path. These kernels operate on host NumPy
-buffers, and the benchmark covers only the CPU implementation.
+There is intentionally no GPU path. The covered kernels are streaming dot
+products, short-filter convolution, and low-order regression moments with
+roughly 0.1-2.0 floating-point operations per byte moved, no higher than the
+2-flop/byte threshold where copying host NumPy buffers to a GPU can pay off.
 
 ## How it works
 
@@ -109,14 +111,13 @@ non-empty/non-null storage, and output writability. Python keeps references to
 every input, output, and scratch allocation for the duration of the synchronous
 call, so there is no cross-language allocator or borrowed buffer lifetime.
 Mojo handles SIMD lagged dot products,
-native-width SIMD convolution, seasonal aggregation, Ljung-Box accumulation,
-KPSS moments, and ADF regression moments. Large independent convolution ranges
-are divided into 32,768-value chunks and run on at most 16 workers; smaller
-ranges remain serial. Python handles validation, small dense solves, MacKinnon
-response surfaces, SciPy probability distributions, and pandas metadata.
-Seasonal expansion avoids an integer indexing buffer, the detrended allocation
-is reused for residuals, and decomposition weights are allocated only if their
-property is accessed.
+native-width SIMD convolution, cache-friendly seasonal aggregation, fused SIMD
+seasonal expansion and residual formation, Ljung-Box accumulation, KPSS
+moments, and ADF regression moments. Python handles validation, small dense
+solves, MacKinnon response surfaces, SciPy probability distributions, and
+pandas metadata. Fixed-lag ADF builds its design matrix once and derives SSR
+from the regression moments when residuals are not requested. Decomposition
+weights are allocated only if their property is accessed.
 
 ## Development
 

@@ -90,7 +90,7 @@ def test_simd_tail_parity():
 
 
 @pytest.mark.parametrize("size", [131_083, 131_084])
-def test_parallel_threshold_parity(size):
+def test_large_input_parity(size):
     time = np.arange(size, dtype=np.float64)
     values = (
         30.0

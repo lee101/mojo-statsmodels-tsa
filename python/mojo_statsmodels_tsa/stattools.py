@@ -197,7 +197,7 @@ def pacf_yw(x, nlags=None, method="adjusted"):
 
 
 class _OLSResult:
-    def __init__(self, y: np.ndarray, x: np.ndarray):
+    def __init__(self, y: np.ndarray, x: np.ndarray, *, store_resid: bool = True):
         nobs, columns = x.shape
         gram = np.empty((columns, columns), dtype=np.float64)
         rhs = np.empty(columns, dtype=np.float64)
@@ -211,12 +211,17 @@ class _OLSResult:
         )
         try:
             params = np.linalg.solve(gram, rhs)
+            rank = columns
         except np.linalg.LinAlgError:
             params = np.linalg.lstsq(x, y, rcond=None)[0]
+            rank = int(np.linalg.matrix_rank(x))
         self.params = params
-        self.resid = y - x @ params
-        self.ssr = float(self.resid @ self.resid)
-        rank = int(np.linalg.matrix_rank(x))
+        if store_resid:
+            self.resid = y - x @ params
+            self.ssr = float(self.resid @ self.resid)
+        else:
+            self.resid = None
+            self.ssr = max(float(y @ y - params @ rhs), 0.0)
         self.df_resid = nobs - rank
         scale = self.ssr / self.df_resid
         covariance = np.linalg.pinv(gram) * scale
@@ -246,6 +251,23 @@ def _adf_base(values: np.ndarray, lag: int):
     columns = [values[lag:-1]]
     columns.extend(difference[lag - i : -i] for i in range(1, lag + 1))
     return y, np.ascontiguousarray(np.column_stack(columns))
+
+
+def _adf_design(values: np.ndarray, lag: int, regression: str):
+    difference = np.diff(values)
+    y = difference[lag:]
+    ntrend = 0 if regression == "n" else len(regression)
+    design = np.empty((y.size, lag + 1 + ntrend), dtype=np.float64)
+    design[:, 0] = values[lag:-1]
+    for i in range(1, lag + 1):
+        design[:, i] = difference[lag - i : -i]
+    if ntrend:
+        design[:, lag + 1] = 1.0
+    if ntrend >= 2:
+        design[:, lag + 2] = np.arange(1.0, y.size + 1.0)
+    if ntrend == 3:
+        design[:, lag + 3] = design[:, lag + 2] ** 2
+    return y, design
 
 
 def adfuller(
@@ -300,9 +322,8 @@ def adfuller(
                 usedlag = lag
                 if icbest >= 1.6448536269514722:
                     break
-    y, base = _adf_base(values, usedlag)
-    design = np.ascontiguousarray(np.column_stack((base, _trend(y.size, regression))))
-    result = _OLSResult(y, design)
+    y, design = _adf_design(values, usedlag, regression)
+    result = _OLSResult(y, design, store_resid=bool(store or regresults))
     statistic = float(result.tvalues[0])
     critical_array = mackinnoncrit(regression, y.size)
     critical = dict(zip(("1%", "5%", "10%"), critical_array))
