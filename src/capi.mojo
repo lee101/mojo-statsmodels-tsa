@@ -1,6 +1,5 @@
 """Numerical kernels for classical time-series decomposition and tests."""
 
-from std.algorithm import parallelize
 from std.sys import simd_width_of
 
 
@@ -183,19 +182,7 @@ def mts_convolution(
     var dst_offset = head * cols
     fill(dst, 0, dst_offset, nan)
     fill(dst, dst_offset + valid_values, n * cols, nan)
-    comptime chunk_size = 32_768
-    if valid_values >= 131_072 and valid_values * m >= 1_048_576:
-        var chunks = (valid_values + chunk_size - 1) // chunk_size
-
-        @parameter
-        def work(chunk: Int):
-            var start = chunk * chunk_size
-            var stop = min(start + chunk_size, valid_values)
-            convolution_range(x, filt, dst, cols, m, dst_offset, start, stop)
-
-        parallelize[work](chunks, min(chunks, 16))
-    else:
-        convolution_range(x, filt, dst, cols, m, dst_offset, 0, valid_values)
+    convolution_range(x, filt, dst, cols, m, dst_offset, 0, valid_values)
 
 
 @export("mts_seasonal_mean")
